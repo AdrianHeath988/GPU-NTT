@@ -318,7 +318,7 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type> modulus,
             ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size);
+            int batch_size, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
@@ -326,18 +326,18 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type> modulus,
              ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size);
+             int batch_size, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                   Modulus<T> modulus, ntt_configuration<T> cfg,
-                                  int batch_size);
+                                  int batch_size, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void GPU_INTT_Inplace(T* device_inout,
                                    Root<T>* root_of_unity_table,
                                    Modulus<T> modulus, ntt_configuration<T> cfg,
-                                   int batch_size);
+                                   int batch_size, T** intermediate_steps = nullptr);
 
     /**
      * @brief Performs Number Theoretic Transform (NTT) over batched polynomials
@@ -398,7 +398,7 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type>* modulus,
             ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size, int mod_count);
+            int batch_size, int mod_count, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
@@ -406,19 +406,19 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type>* modulus,
              ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size, int mod_count);
+             int batch_size, int mod_count, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                   Modulus<T>* modulus,
                                   ntt_rns_configuration<T> cfg, int batch_size,
-                                  int mod_count);
+                                  int mod_count, T** intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
     GPU_INTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                      Modulus<T>* modulus, ntt_rns_configuration<T> cfg,
-                     int batch_size, int mod_count);
+                     int batch_size, int mod_count, T** intermediate_steps = nullptr);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -504,7 +504,7 @@ namespace gpuntt
                                                   Modulus<T>* modulus,
                                                   ntt_rns_configuration<T> cfg,
                                                   int batch_size, int mod_count,
-                                                  int* order);
+                                                  int* order, T** intermediate_steps = nullptr);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -600,7 +600,7 @@ namespace gpuntt
     GPU_NTT_Poly_Ordered_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                  Modulus<T>* modulus,
                                  ntt_rns_configuration<T> cfg, int batch_size,
-                                 int mod_count, int* order);
+                                 int mod_count, int* order, T** intermediate_steps = nullptr);
 
     // Kernel Parameters
     template <typename T> auto CreateForwardNTTKernel()
