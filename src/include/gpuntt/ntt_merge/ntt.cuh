@@ -188,7 +188,7 @@ namespace gpuntt
         Modulus<typename std::make_unsigned<T>::type> modulus, int shared_index,
         int logm, int k, int outer_iteration_count, int N_power,
         Ninverse<typename std::make_unsigned<T>::type> n_inverse,
-        bool last_kernel, bool reduction_poly_check);
+        bool last_kernel, bool reduction_poly_check, T* raw_intt1 = nullptr);
 
     // It provides multiple NTT operation with using multiple prime for
     // RNS(Residue Number System).
@@ -200,7 +200,7 @@ namespace gpuntt
         Modulus<typename std::make_unsigned<T>::type>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<typename std::make_unsigned<T>::type>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count);
+        bool last_kernel, bool reduction_poly_check, int mod_count, T* raw_intt1 = nullptr);
 
     // It provides multiple NTT operation with using single prime.
     template <typename T>
@@ -318,7 +318,7 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type> modulus,
             ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size, T** intermediate_steps = nullptr);
+            int batch_size, T* intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
@@ -326,7 +326,7 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type> modulus,
              ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size, T** intermediate_steps = nullptr);
+             int batch_size, T* intermediate_step = nullptr);
 
     template <typename T>
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
@@ -337,7 +337,7 @@ namespace gpuntt
     __host__ void GPU_INTT_Inplace(T* device_inout,
                                    Root<T>* root_of_unity_table,
                                    Modulus<T> modulus, ntt_configuration<T> cfg,
-                                   int batch_size, T** intermediate_steps = nullptr);
+                                   int batch_size, T* intermediate_steps = nullptr);
 
     /**
      * @brief Performs Number Theoretic Transform (NTT) over batched polynomials
@@ -398,7 +398,7 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type>* modulus,
             ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size, int mod_count, T** intermediate_steps = nullptr);
+            int batch_size, int mod_count, T* intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
@@ -406,7 +406,7 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type>* modulus,
              ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size, int mod_count, T** intermediate_steps = nullptr);
+             int batch_size, int mod_count, T* intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
@@ -418,7 +418,7 @@ namespace gpuntt
     __host__ void
     GPU_INTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                      Modulus<T>* modulus, ntt_rns_configuration<T> cfg,
-                     int batch_size, int mod_count, T** intermediate_steps = nullptr);
+                     int batch_size, int mod_count, T* intermediate_steps = nullptr);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 

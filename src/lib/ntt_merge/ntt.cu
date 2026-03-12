@@ -1093,7 +1093,7 @@ namespace gpuntt
         Modulus<typename std::make_unsigned<T>::type> modulus, int shared_index,
         int logm, int k, int outer_iteration_count, int N_power,
         Ninverse<typename std::make_unsigned<T>::type> n_inverse,
-        bool last_kernel, bool reduction_poly_check)
+        bool last_kernel, bool reduction_poly_check, T* trace_buffer)
     {
         using TU = typename std::make_unsigned<T>::type;
 
@@ -1159,6 +1159,23 @@ namespace gpuntt
                                inverse_root_of_unity_table[current_root_index],
                                modulus_reg);
 
+
+            __syncthreads();
+            if (trace_buffer != nullptr) {
+                // Calculate which absolute stage we just finished (0 to N_power - 1)
+                // logm is the starting logm for this fused kernel. We subtract lp.
+                int current_overall_stage = (N_power - 1) - (logm - lp);
+                
+                // elements_per_stage calculates the total flat size of the data
+                // global_addresss natively handles the RNS offsets via block_z
+                size_t elements_per_stage = /*mod_count **/ (1 << N_power);
+                size_t stage_offset = current_overall_stage * elements_per_stage;
+
+                // Stream the shared memory out to global memory
+                trace_buffer[stage_offset + global_addresss] = shared_memory[shared_addresss];
+                trace_buffer[stage_offset + global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+            }
+
             t = t << 1;
             t_2 += 1;
             t_ += 1;
@@ -1191,6 +1208,22 @@ namespace gpuntt
                 polynomial_out[global_addresss] = output1_reg;
                 polynomial_out[global_addresss + offset] = output2_reg;
             }
+
+            if (trace_buffer != nullptr) // (or trace_buffer, whatever you named the parameter)
+            {
+                // The final stage is always at index (N_power - 1)
+                size_t elements_per_stage = /*mod_count **/ (1 << N_power); 
+                size_t final_stage_offset = (N_power - 1) * elements_per_stage;
+                
+                // Overwrite the last chunk of the trace buffer with the scaled values
+                if constexpr (std::is_signed<T>::value) {
+                    trace_buffer[final_stage_offset + global_addresss] = OPERATOR_GPU<TU>::centered_reduction(output1_reg, modulus_reg);
+                    trace_buffer[final_stage_offset + global_addresss + offset] = OPERATOR_GPU<TU>::centered_reduction(output2_reg, modulus_reg);
+                } else {
+                    trace_buffer[final_stage_offset + global_addresss] = output1_reg;
+                    trace_buffer[final_stage_offset + global_addresss + offset] = output2_reg;
+                }
+            }
         }
         else
         {
@@ -1208,7 +1241,7 @@ namespace gpuntt
         Modulus<typename std::make_unsigned<T>::type>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<typename std::make_unsigned<T>::type>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count)
+        bool last_kernel, bool reduction_poly_check, int mod_count, T* trace_buffer)
     {
         using TU = typename std::make_unsigned<T>::type;
 
@@ -1278,6 +1311,26 @@ namespace gpuntt
                                inverse_root_of_unity_table[current_root_index],
                                modulus[mod_index]);
 
+
+            //Want to save the stage w/o unfusing kernels: 
+            //We will sync threads and send mem
+            //Less efficent, but more efficient than launching another kernel
+            __syncthreads();
+            if (trace_buffer != nullptr) {
+                // Calculate which absolute stage we just finished (0 to N_power - 1)
+                // logm is the starting logm for this fused kernel. We subtract lp.
+                int current_overall_stage = (N_power - 1) - (logm - lp);
+                
+                // elements_per_stage calculates the total flat size of the data
+                // global_addresss natively handles the RNS offsets via block_z
+                size_t elements_per_stage = mod_count * (1 << N_power);
+                size_t stage_offset = current_overall_stage * elements_per_stage;
+
+                // Stream the shared memory out to global memory
+                trace_buffer[stage_offset + global_addresss] = shared_memory[shared_addresss];
+                trace_buffer[stage_offset + global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+            }
+
             t = t << 1;
             t_2 += 1;
             t_ += 1;
@@ -1309,6 +1362,22 @@ namespace gpuntt
             {
                 polynomial_out[global_addresss] = output1_reg;
                 polynomial_out[global_addresss + offset] = output2_reg;
+            }
+
+            if (trace_buffer != nullptr) // (or trace_buffer, whatever you named the parameter)
+            {
+                // The final stage is always at index (N_power - 1)
+                size_t elements_per_stage = mod_count * (1 << N_power); 
+                size_t final_stage_offset = (N_power - 1) * elements_per_stage;
+                
+                // Overwrite the last chunk of the trace buffer with the scaled values
+                if constexpr (std::is_signed<T>::value) {
+                    trace_buffer[final_stage_offset + global_addresss] = OPERATOR_GPU<TU>::centered_reduction(output1_reg, modulus_reg);
+                    trace_buffer[final_stage_offset + global_addresss + offset] = OPERATOR_GPU<TU>::centered_reduction(output2_reg, modulus_reg);
+                } else {
+                    trace_buffer[final_stage_offset + global_addresss] = output1_reg;
+                    trace_buffer[final_stage_offset + global_addresss + offset] = output2_reg;
+                }
             }
         }
         else
@@ -2081,7 +2150,7 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type> modulus,
             ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size, T** intermediate_steps = nullptr)
+            int batch_size, T* intermediate_steps = nullptr)
     {
         switch (cfg.ntt_layout)
         {
@@ -2263,7 +2332,7 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type> modulus,
              ntt_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size, T** intermediate_steps = nullptr)
+             int batch_size, T* intermediate_steps = nullptr)
     {
         switch (cfg.ntt_layout)
         {
@@ -2565,10 +2634,10 @@ namespace gpuntt
             Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
             Modulus<typename std::make_unsigned<T>::type>* modulus,
             ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-            int batch_size, int mod_count, T** intermediate_steps = nullptr)
+            int batch_size, int mod_count, T* intermediate_steps = nullptr)
     {
         size_t elements_per_stage = batch_size * mod_count * (1 << cfg.n_power);
-        size_t bytes_per_stage = elements_per_stage * sizeof(T);
+        size_t bytes_per_stage = batch_size * (1 << cfg.n_power) * sizeof(T);
 
         switch (cfg.ntt_layout)
         {
@@ -2626,10 +2695,7 @@ namespace gpuntt
                             mod_count);
                         GPUNTT_CUDA_CHECK(cudaGetLastError());
                         //for saving values
-                        if (intermediate_steps != nullptr) {
-                            cudaMemcpyAsync(intermediate_steps[0], device_out, bytes_per_stage, 
-                                            cudaMemcpyDeviceToDevice, cfg.stream);
-                        }
+                        
                         for (int i = 1;
                              i < kernel_parameters[cfg.n_power].size(); i++)
                         {
@@ -2654,10 +2720,7 @@ namespace gpuntt
                                 mod_count);
                             GPUNTT_CUDA_CHECK(cudaGetLastError());
                             //save
-                            if (intermediate_steps != nullptr) {
-                                cudaMemcpyAsync(intermediate_steps[i], device_out, bytes_per_stage, 
-                                                cudaMemcpyDeviceToDevice, cfg.stream);
-                            }
+                            
                         }
                     }
                     else
@@ -2765,10 +2828,10 @@ namespace gpuntt
              Root<typename std::make_unsigned<T>::type>* root_of_unity_table,
              Modulus<typename std::make_unsigned<T>::type>* modulus,
              ntt_rns_configuration<typename std::make_unsigned<T>::type> cfg,
-             int batch_size, int mod_count, T** intermediate_steps = nullptr)
+             int batch_size, int mod_count, T* raw_intt1 = nullptr)
     {
         size_t elements_per_stage = batch_size * mod_count * (1 << cfg.n_power);
-        size_t bytes_per_stage = elements_per_stage * sizeof(T);
+        size_t bytes_per_stage = batch_size * (1 << cfg.n_power) * sizeof(T);
         switch (cfg.ntt_layout)
         {
             case PerPolynomial:
@@ -2837,13 +2900,11 @@ namespace gpuntt
                                     current_kernel_params.not_last_kernel,
                                     (cfg.reduction_poly ==
                                      ReductionPolynomial::X_N_minus),
-                                    mod_count);
+                                    mod_count, reinterpret_cast<
+                                    typename std::make_unsigned<T>::type*>(
+                                    raw_intt1));
                                 GPUNTT_CUDA_CHECK(cudaGetLastError());
-                                //Added for intermediate values
-                                if (intermediate_steps != nullptr) {
-                                    cudaMemcpyAsync(intermediate_steps[i], device_out, bytes_per_stage, 
-                                                    cudaMemcpyDeviceToDevice, cfg.stream);
-                                }
+                                
                                 device_in_ = reinterpret_cast<
                                     typename std::make_unsigned<T>::type*>(
                                     device_out);
@@ -2872,14 +2933,9 @@ namespace gpuntt
                                 current_kernel_params.not_last_kernel,
                                 (cfg.reduction_poly ==
                                  ReductionPolynomial::X_N_minus),
-                                mod_count);
+                                mod_count, raw_intt1);
                             GPUNTT_CUDA_CHECK(cudaGetLastError());
-                            //Save final step
-                            if (intermediate_steps != nullptr) {
-                                size_t last_idx = kernel_parameters[cfg.n_power].size() - 1;
-                                cudaMemcpyAsync(intermediate_steps[last_idx], device_out, bytes_per_stage, 
-                                                cudaMemcpyDeviceToDevice, cfg.stream);
-                            }
+                            
                         }
                         else
                         {
@@ -2906,13 +2962,11 @@ namespace gpuntt
                                     current_kernel_params.not_last_kernel,
                                     (cfg.reduction_poly ==
                                      ReductionPolynomial::X_N_minus),
-                                    mod_count);
+                                    mod_count, reinterpret_cast<
+                                    typename std::make_unsigned<T>::type*>(
+                                    raw_intt1));
                                 GPUNTT_CUDA_CHECK(cudaGetLastError());
-                                //save values
-                                if (intermediate_steps != nullptr) {
-                                    cudaMemcpyAsync(intermediate_steps[i], device_out, bytes_per_stage, 
-                                                    cudaMemcpyDeviceToDevice, cfg.stream);
-                                }
+                                
                                 device_in_ = device_out;
                             }
                         }
@@ -3095,7 +3149,7 @@ namespace gpuntt
                                   int batch_size, T** intermediate_steps = nullptr)
     {
         GPU_NTT(device_inout, device_inout, root_of_unity_table, modulus, cfg,
-                batch_size, intermediate_steps);
+                batch_size);
     }
 
     template <typename T>
@@ -3105,14 +3159,14 @@ namespace gpuntt
                                   int mod_count, T** intermediate_steps = nullptr)
     {
         GPU_NTT(device_inout, device_inout, root_of_unity_table, modulus, cfg,
-                batch_size, mod_count, intermediate_steps);
+                batch_size, mod_count);
     }
 
     template <typename T>
     __host__ void GPU_INTT_Inplace(T* device_inout,
                                    Root<T>* root_of_unity_table,
                                    Modulus<T> modulus, ntt_configuration<T> cfg,
-                                   int batch_size, T** intermediate_steps)
+                                   int batch_size, T* intermediate_steps)
     {
         GPU_INTT(device_inout, device_inout, root_of_unity_table, modulus, cfg,
                  batch_size, intermediate_steps);
@@ -3122,7 +3176,7 @@ namespace gpuntt
     __host__ void
     GPU_INTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                      Modulus<T>* modulus, ntt_rns_configuration<T> cfg,
-                     int batch_size, int mod_count, T** intermediate_steps)
+                     int batch_size, int mod_count, T* intermediate_steps)
     {
         GPU_INTT(device_inout, device_inout, root_of_unity_table, modulus, cfg,
                  batch_size, mod_count, intermediate_steps);
@@ -3647,7 +3701,7 @@ namespace gpuntt
                                      : CreateInverseNTTKernel<T>();
         bool standart_kernel = (cfg.n_power < 25) ? true : false;
         T* device_in_ = device_in;
-        size_t bytes_per_stage = batch_size * mod_count * (1 << cfg.n_power) * sizeof(T);
+        size_t bytes_per_stage = batch_size * (1 << cfg.n_power) * sizeof(T);
         switch (cfg.ntt_type)
         {
             case FORWARD:
@@ -4332,7 +4386,7 @@ namespace gpuntt
                                      : CreateInverseNTTKernel<T>();
         bool standart_kernel = (cfg.n_power < 25) ? true : false;
         T* device_in_ = device_in;
-        size_t bytes_per_stage = batch_size * mod_count * (1 << cfg.n_power) * sizeof(T);
+        size_t bytes_per_stage = batch_size * (1 << cfg.n_power) * sizeof(T);
         switch (cfg.ntt_type)
         {
             case FORWARD:
@@ -4788,56 +4842,56 @@ namespace gpuntt
         const Root<Data32>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data32> modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data32> n_inverse,
-        bool last_kernel, bool reduction_poly_check);
+        bool last_kernel, bool reduction_poly_check, Data32 * intermediate_trace = nullptr);
 
     template __global__ void InverseCore<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         const Root<Data64>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data64> modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data64> n_inverse,
-        bool last_kernel, bool reduction_poly_check);
+        bool last_kernel, bool reduction_poly_check, Data64 * intermediate_trace = nullptr);
 
     template __global__ void InverseCore<Data32s>(
         Data32* polynomial_in, Data32s* polynomial_out,
         const Root<Data32>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data32> modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data32> n_inverse,
-        bool last_kernel, bool reduction_poly_check);
+        bool last_kernel, bool reduction_poly_check, Data32s * intermediate_trace);
 
     template __global__ void InverseCore<Data64s>(
         Data64* polynomial_in, Data64s* polynomial_out,
         const Root<Data64>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data64> modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data64> n_inverse,
-        bool last_kernel, bool reduction_poly_check);
+        bool last_kernel, bool reduction_poly_check, Data64s * raw_intt1 = nullptr);
 
     template __global__ void InverseCore<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
         const Root<Data32>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data32>* modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data32>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count);
+        bool last_kernel, bool reduction_poly_check, int mod_count, Data32 * intermediate_trace = nullptr);
 
     template __global__ void InverseCore<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         const Root<Data64>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data64>* modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data64>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count);
+        bool last_kernel, bool reduction_poly_check, int mod_count, Data64 * intermediate_trace = nullptr);
 
     template __global__ void InverseCore<Data32s>(
         Data32* polynomial_in, Data32s* polynomial_out,
         const Root<Data32>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data32>* modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data32>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count);
+        bool last_kernel, bool reduction_poly_check, int mod_count, Data32s * intermediate_trace = nullptr);
 
     template __global__ void InverseCore<Data64s>(
         Data64* polynomial_in, Data64s* polynomial_out,
         const Root<Data64>* __restrict__ inverse_root_of_unity_table,
         Modulus<Data64>* modulus, int shared_index, int logm, int k,
         int outer_iteration_count, int N_power, Ninverse<Data64>* n_inverse,
-        bool last_kernel, bool reduction_poly_check, int mod_count);
+        bool last_kernel, bool reduction_poly_check, int mod_count, Data64s * intermediate_trace = nullptr);
 
     template __global__ void InverseCore_<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
@@ -4994,46 +5048,46 @@ namespace gpuntt
     template __host__ void
     GPU_NTT<Data32>(Data32* device_in, Data32* device_out,
                     Root<Data32>* root_of_unity_table, Modulus<Data32> modulus,
-                    ntt_configuration<Data32> cfg, int batch_size, Data32** intermediate_steps = nullptr);
+                    ntt_configuration<Data32> cfg, int batch_size, Data32* intermediate_steps);
 
     template __host__ void
     GPU_NTT<Data64>(Data64* device_in, Data64* device_out,
                     Root<Data64>* root_of_unity_table, Modulus<Data64> modulus,
-                    ntt_configuration<Data64> cfg, int batch_size, Data64** intermediate_steps = nullptr);
+                    ntt_configuration<Data64> cfg, int batch_size, Data64* intermediate_steps);
 
     template __host__ void
     GPU_NTT<Data32s>(Data32s* device_in, Data32* device_out,
                      Root<Data32>* root_of_unity_table, Modulus<Data32> modulus,
-                     ntt_configuration<Data32> cfg, int batch_size, Data32s** intermediate_steps = nullptr);
+                     ntt_configuration<Data32> cfg, int batch_size, Data32s* intermediate_steps);
 
     template __host__ void
     GPU_NTT<Data64s>(Data64s* device_in, Data64* device_out,
                      Root<Data64>* root_of_unity_table, Modulus<Data64> modulus,
-                     ntt_configuration<Data64> cfg, int batch_size, Data64s** intermediate_steps = nullptr);
+                     ntt_configuration<Data64> cfg, int batch_size, Data64s* intermediate_steps);
 
     template __host__ void
     GPU_INTT<Data32>(Data32* device_in, Data32* device_out,
                      Root<Data32>* root_of_unity_table, Modulus<Data32> modulus,
-                     ntt_configuration<Data32> cfg, int batch_size, Data32** intermediate_steps = nullptr);
+                     ntt_configuration<Data32> cfg, int batch_size, Data32* intermediate_steps = nullptr);
 
     template __host__ void
     GPU_INTT<Data64>(Data64* device_in, Data64* device_out,
                      Root<Data64>* root_of_unity_table, Modulus<Data64> modulus,
-                     ntt_configuration<Data64> cfg, int batch_size, Data64** intermediate_steps = nullptr);
+                     ntt_configuration<Data64> cfg, int batch_size, Data64* intermediate_steps = nullptr);
 
     template __host__ void GPU_INTT<Data32s>(Data32* device_in,
                                              Data32s* device_out,
                                              Root<Data32>* root_of_unity_table,
                                              Modulus<Data32> modulus,
                                              ntt_configuration<Data32> cfg,
-                                             int batch_size, Data32s** intermediate_steps);
+                                             int batch_size, Data32s* intermediate_steps);
 
     template __host__ void GPU_INTT<Data64s>(Data64* device_in,
                                              Data64s* device_out,
                                              Root<Data64>* root_of_unity_table,
                                              Modulus<Data64> modulus,
                                              ntt_configuration<Data64> cfg,
-                                             int batch_size, Data64s** intermediate_steps);
+                                             int batch_size, Data64s* intermediate_steps);
 
     template __host__ void GPU_NTT_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
@@ -5045,67 +5099,67 @@ namespace gpuntt
 
     template __host__ void GPU_INTT_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
-        Modulus<Data32> modulus, ntt_configuration<Data32> cfg, int batch_size, Data32** intermediate_step = nullptr);
+        Modulus<Data32> modulus, ntt_configuration<Data32> cfg, int batch_size, Data32* intermediate_step = nullptr);
 
     template __host__ void GPU_INTT_Inplace<Data64>(
         Data64* device_inout, Root<Data64>* root_of_unity_table,
-        Modulus<Data64> modulus, ntt_configuration<Data64> cfg, int batch_size, Data64** intermediate_step = nullptr);
+        Modulus<Data64> modulus, ntt_configuration<Data64> cfg, int batch_size, Data64* intermediate_step = nullptr);
 
     template __host__ void GPU_NTT<Data32>(Data32* device_in,
                                            Data32* device_out,
                                            Root<Data32>* root_of_unity_table,
                                            Modulus<Data32>* modulus,
                                            ntt_rns_configuration<Data32> cfg,
-                                           int batch_size, int mod_count, Data32** intermediate_steps = nullptr);
+                                           int batch_size, int mod_count, Data32* intermediate_steps);
 
     template __host__ void GPU_NTT<Data64>(Data64* device_in,
                                            Data64* device_out,
                                            Root<Data64>* root_of_unity_table,
                                            Modulus<Data64>* modulus,
                                            ntt_rns_configuration<Data64> cfg,
-                                           int batch_size, int mod_count, Data64** intermediate_steps = nullptr);
+                                           int batch_size, int mod_count, Data64* intermediate_steps);
 
     template __host__ void GPU_NTT<Data32s>(Data32s* device_in,
                                             Data32* device_out,
                                             Root<Data32>* root_of_unity_table,
                                             Modulus<Data32>* modulus,
                                             ntt_rns_configuration<Data32> cfg,
-                                            int batch_size, int mod_count, Data32s** intermediate_steps = nullptr);
+                                            int batch_size, int mod_count, Data32s* intermediate_steps = nullptr);
 
     template __host__ void GPU_NTT<Data64s>(Data64s* device_in,
                                             Data64* device_out,
                                             Root<Data64>* root_of_unity_table,
                                             Modulus<Data64>* modulus,
                                             ntt_rns_configuration<Data64> cfg,
-                                            int batch_size, int mod_count, Data64s** intermediate_steps = nullptr);
+                                            int batch_size, int mod_count, Data64s* intermediate_steps = nullptr);
 
     template __host__ void GPU_INTT<Data32>(Data32* device_in,
                                             Data32* device_out,
                                             Root<Data32>* root_of_unity_table,
                                             Modulus<Data32>* modulus,
                                             ntt_rns_configuration<Data32> cfg,
-                                            int batch_size, int mod_count, Data32** intermediate_steps = nullptr);
+                                            int batch_size, int mod_count, Data32* intermediate_steps = nullptr);
 
     template __host__ void GPU_INTT<Data64>(Data64* device_in,
                                             Data64* device_out,
                                             Root<Data64>* root_of_unity_table,
                                             Modulus<Data64>* modulus,
                                             ntt_rns_configuration<Data64> cfg,
-                                            int batch_size, int mod_count, Data64** intermediate_steps = nullptr);
+                                            int batch_size, int mod_count, Data64* intermediate_steps = nullptr);
 
     template __host__ void GPU_INTT<Data32s>(Data32* device_in,
                                              Data32s* device_out,
                                              Root<Data32>* root_of_unity_table,
                                              Modulus<Data32>* modulus,
                                              ntt_rns_configuration<Data32> cfg,
-                                             int batch_size, int mod_count, Data32s** intermediate_steps = nullptr);
+                                             int batch_size, int mod_count, Data32s* intermediate_steps = nullptr);
 
     template __host__ void GPU_INTT<Data64s>(Data64* device_in,
                                              Data64s* device_out,
                                              Root<Data64>* root_of_unity_table,
                                              Modulus<Data64>* modulus,
                                              ntt_rns_configuration<Data64> cfg,
-                                             int batch_size, int mod_count, Data64s** intermediate_steps = nullptr);
+                                             int batch_size, int mod_count, Data64s* intermediate_steps = nullptr);
 
     template __host__ void GPU_NTT_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
@@ -5120,12 +5174,12 @@ namespace gpuntt
     template __host__ void GPU_INTT_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
         Modulus<Data32>* modulus, ntt_rns_configuration<Data32> cfg,
-        int batch_size, int mod_count, Data32** intermediate_step = nullptr);
+        int batch_size, int mod_count, Data32* intermediate_step = nullptr);
 
     template __host__ void GPU_INTT_Inplace<Data64>(
         Data64* device_inout, Root<Data64>* root_of_unity_table,
         Modulus<Data64>* modulus, ntt_rns_configuration<Data64> cfg,
-        int batch_size, int mod_count, Data64** intermediate_step = nullptr);
+        int batch_size, int mod_count, Data64* intermediate_step = nullptr);
 
     template __global__ void ForwardCoreModulusOrdered<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
