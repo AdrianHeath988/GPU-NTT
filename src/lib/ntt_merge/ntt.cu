@@ -1361,7 +1361,7 @@ namespace gpuntt
                 polynomial_out[global_addresss] = output1_reg;
                 polynomial_out[global_addresss + offset] = output2_reg;
             }
-
+            __syncthreads();
             if (trace_buffer != nullptr) // (or trace_buffer, whatever you named the parameter)
             {
                 // The final stage is always at index (N_power - 1)
