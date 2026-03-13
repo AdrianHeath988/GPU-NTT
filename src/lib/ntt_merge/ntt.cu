@@ -1209,7 +1209,7 @@ namespace gpuntt
                 polynomial_out[global_addresss + offset] = output2_reg;
             }
 
-            if (trace_buffer != nullptr) // (or trace_buffer, whatever you named the parameter)
+            if (trace_buffer != nullptr) 
             {
                 // The final stage is always at index (N_power - 1)
                 size_t elements_per_stage = /*mod_count **/ (1 << N_power); 
