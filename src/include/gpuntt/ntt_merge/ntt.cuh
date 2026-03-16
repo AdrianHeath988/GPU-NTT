@@ -504,7 +504,7 @@ namespace gpuntt
                                                   Modulus<T>* modulus,
                                                   ntt_rns_configuration<T> cfg,
                                                   int batch_size, int mod_count,
-                                                  int* order, T** intermediate_steps = nullptr);
+                                                  int* order, T* intermediate_steps = nullptr);
 
     ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
