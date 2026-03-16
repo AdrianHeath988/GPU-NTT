@@ -1363,7 +1363,7 @@ namespace gpuntt
                 polynomial_out[global_addresss] = output1_reg;
                 polynomial_out[global_addresss + offset] = output2_reg;
             }
-
+            __syncthreads();
             if (trace_buffer != nullptr) // (or trace_buffer, whatever you named the parameter)
             {
                 // The final stage is always at index (N_power - 1)
@@ -3689,7 +3689,7 @@ namespace gpuntt
                             Root<T>* root_of_unity_table, Modulus<T>* modulus,
                             ntt_rns_configuration<T> cfg, int batch_size,
                             int mod_count, int* order,
-                            T** intermediate_steps = nullptr)
+                            T* intermediate_steps = nullptr)
     {
         if ((cfg.n_power <= 9 || cfg.n_power >= 29))
         {
@@ -3860,7 +3860,7 @@ namespace gpuntt
     template <typename T>
     __host__ void GPU_NTT_Modulus_Ordered_Inplace(
         T* device_inout, Root<T>* root_of_unity_table, Modulus<T>* modulus,
-        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order, T** intermediate_steps = nullptr)
+        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order, T* intermediate_steps = nullptr)
     {
         GPU_NTT_Modulus_Ordered(device_inout, device_inout, root_of_unity_table,
                                 modulus, cfg, batch_size, mod_count, order, intermediate_steps);
@@ -5242,24 +5242,24 @@ namespace gpuntt
                                     Root<Data32>* root_of_unity_table,
                                     Modulus<Data32>* modulus,
                                     ntt_rns_configuration<Data32> cfg,
-                                    int batch_size, int mod_count, int* order, Data32** intermediate_steps = nullptr);
+                                    int batch_size, int mod_count, int* order, Data32* intermediate_steps = nullptr);
 
     template __host__ void GPU_NTT_Modulus_Ordered_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
         Modulus<Data32>* modulus, ntt_rns_configuration<Data32> cfg,
-        int batch_size, int mod_count, int* order, Data32** intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order, Data32* intermediate_steps = nullptr);
 
     template __host__ void
     GPU_NTT_Modulus_Ordered<Data64>(Data64* device_in, Data64* device_out,
                                     Root<Data64>* root_of_unity_table,
                                     Modulus<Data64>* modulus,
                                     ntt_rns_configuration<Data64> cfg,
-                                    int batch_size, int mod_count, int* order);
+                                    int batch_size, int mod_count, int* order, Data64* intermediate_steps = nullptr);
 
     template __host__ void GPU_NTT_Modulus_Ordered_Inplace<Data64>(
         Data64* device_inout, Root<Data64>* root_of_unity_table,
         Modulus<Data64>* modulus, ntt_rns_configuration<Data64> cfg,
-        int batch_size, int mod_count, int* order, Data64** intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order, Data64* intermediate_steps = nullptr);
 
     template __global__ void ForwardCorePolyOrdered<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
