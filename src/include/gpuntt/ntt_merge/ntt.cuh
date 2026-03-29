@@ -120,7 +120,7 @@ namespace gpuntt
             T>::type>* __restrict__ root_of_unity_table,
         Modulus<typename std::make_unsigned<T>::type> modulus, int shared_index,
         int logm, int outer_iteration_count, int N_power, bool zero_padding,
-        bool not_last_kernel, bool reduction_poly_check);
+        bool not_last_kernel, bool reduction_poly_check, typename std::make_unsigned<T>::type* trace_buffer = nullptr);
 
     // It provides multiple NTT operation with using multiple prime for
     // RNS(Residue Number System).
@@ -133,7 +133,7 @@ namespace gpuntt
                 Modulus<typename std::make_unsigned<T>::type>* modulus,
                 int shared_index, int logm, int outer_iteration_count,
                 int N_power, bool zero_padding, bool not_last_kernel,
-                bool reduction_poly_check, int mod_count);
+                bool reduction_poly_check, int mod_count, typename std::make_unsigned<T>::type* trace_buffer = nullptr);
 
     // It provides multiple NTT operation with using single prime.
     template <typename T>
@@ -143,7 +143,7 @@ namespace gpuntt
             T>::type>* __restrict__ root_of_unity_table,
         Modulus<typename std::make_unsigned<T>::type> modulus, int shared_index,
         int logm, int outer_iteration_count, int N_power, bool zero_padding,
-        bool not_last_kernel, bool reduction_poly_check);
+        bool not_last_kernel, bool reduction_poly_check, typename std::make_unsigned<T>::type* trace_buffer = nullptr);
 
     // It provides multiple NTT operation with using multiple prime for
     // RNS(Residue Number System).
@@ -156,7 +156,7 @@ namespace gpuntt
                  Modulus<typename std::make_unsigned<T>::type>* modulus,
                  int shared_index, int logm, int outer_iteration_count,
                  int N_power, bool zero_padding, bool not_last_kernel,
-                 bool reduction_poly_check, int mod_count);
+                 bool reduction_poly_check, int mod_count, typename std::make_unsigned<T>::type* trace_buffer = nullptr);
 
     // It provides multiple NTT operation with using single prime.
     template <typename T>
@@ -331,7 +331,7 @@ namespace gpuntt
     template <typename T>
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                   Modulus<T> modulus, ntt_configuration<T> cfg,
-                                  int batch_size, T** intermediate_steps = nullptr);
+                                  int batch_size, T* intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void GPU_INTT_Inplace(T* device_inout,
@@ -412,7 +412,7 @@ namespace gpuntt
     __host__ void GPU_NTT_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                   Modulus<T>* modulus,
                                   ntt_rns_configuration<T> cfg, int batch_size,
-                                  int mod_count, T** intermediate_steps = nullptr);
+                                  int mod_count, T* intermediate_steps = nullptr);
 
     template <typename T>
     __host__ void
@@ -433,7 +433,7 @@ namespace gpuntt
         Modulus<T>* modulus, int shared_index, int logm,
         int outer_iteration_count, int N_power, bool zero_padding,
         bool not_last_kernel, bool reduction_poly_check, int mod_count,
-        int* order);
+        int* order, T* intermediate_step = nullptr);
 
     // It provides multiple NTT operation with using multiple prime for RNS with
     // cetain modulus order.
@@ -443,7 +443,7 @@ namespace gpuntt
         Modulus<T>* modulus, int shared_index, int logm,
         int outer_iteration_count, int N_power, bool zero_padding,
         bool not_last_kernel, bool reduction_poly_check, int mod_count,
-        int* order);
+        int* order, T* intermediate_step = nullptr);
 
     // It provides multiple NTT operation with using multiple prime for RNS with
     // cetain modulus order.
