@@ -687,7 +687,8 @@ namespace gpuntt
                 if (trace_buffer != nullptr) {
                     // Forward NTT goes from 0 to N_power - 1
                     int current_overall_stage = logm + lp; 
-                    size_t elements_per_stage = mod_count * (1 << N_power);
+                    // size_t elements_per_stage = mod_count * (1 << N_power);
+                    size_t elements_per_stage = gridDim.z * (1 << N_power);
                     size_t stage_offset = current_overall_stage * elements_per_stage;
 
                     trace_buffer[stage_offset + global_addresss] = shared_memory[shared_addresss];
@@ -730,7 +731,8 @@ namespace gpuntt
                 __syncthreads();
                 if (trace_buffer != nullptr) {
                     int current_overall_stage = logm + lp;
-                    size_t elements_per_stage = mod_count * (1 << N_power);
+                    // size_t elements_per_stage = mod_count * (1 << N_power);
+                    size_t elements_per_stage = gridDim.z * (1 << N_power);
                     size_t stage_offset = current_overall_stage * elements_per_stage;
                     trace_buffer[stage_offset + global_addresss] = shared_memory[shared_addresss];
                     trace_buffer[stage_offset + global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
@@ -771,7 +773,8 @@ namespace gpuntt
                 if (trace_buffer != nullptr) {
                     // Adjust stage offset for the second block of loops
                     int current_overall_stage = logm + (shared_index - 5) + lp;
-                    size_t elements_per_stage = mod_count * (1 << N_power);
+                    // size_t elements_per_stage = mod_count * (1 << N_power);
+                    size_t elements_per_stage = gridDim.z * (1 << N_power);
                     size_t stage_offset = current_overall_stage * elements_per_stage;
                     // ==========================================
                     // DEBUG: Print only from the very first thread
@@ -1381,7 +1384,8 @@ namespace gpuntt
                 
                 // elements_per_stage calculates the total flat size of the data
                 // global_addresss natively handles the RNS offsets via block_z
-                size_t elements_per_stage = mod_count * (1 << N_power);
+                // size_t elements_per_stage = mod_count * (1 << N_power);
+                size_t elements_per_stage = gridDim.z * (1 << N_power);
                 size_t stage_offset = current_overall_stage * elements_per_stage;
 
                 // Stream the shared memory out to global memory
