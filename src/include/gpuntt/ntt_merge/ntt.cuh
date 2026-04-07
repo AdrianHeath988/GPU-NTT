@@ -519,7 +519,7 @@ namespace gpuntt
         Modulus<T>* modulus, int shared_index, int logm,
         int outer_iteration_count, int N_power, bool zero_padding,
         bool not_last_kernel, bool reduction_poly_check, int mod_count,
-        int* order);
+        int* order, T* trace_buffer = nullptr, size_t trace_stride = 0);
 
     // It provides multiple NTT operation with using multiple prime for RNS with
     // cetain modulus order.
@@ -529,7 +529,7 @@ namespace gpuntt
         Modulus<T>* modulus, int shared_index, int logm,
         int outer_iteration_count, int N_power, bool zero_padding,
         bool not_last_kernel, bool reduction_poly_check, int mod_count,
-        int* order);
+        int* order, T* trace_buffer = nullptr, size_t trace_stride = 0);
 
     // It provides multiple NTT operation with using multiple prime for RNS with
     // cetain modulus order.
@@ -539,7 +539,7 @@ namespace gpuntt
         Root<T>* inverse_root_of_unity_table, Modulus<T>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<T>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, T* trace_buffer = nullptr, size_t trace_stride = 0);
 
     // It provides multiple NTT operation with using multiple prime for RNS with
     // cetain modulus order.
@@ -549,7 +549,7 @@ namespace gpuntt
         Root<T>* inverse_root_of_unity_table, Modulus<T>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<T>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, T* trace_buffer = nullptr, size_t trace_stride = 0);
 
     /*
      * | GPU_NTT_Ordered2_2 & GPU_NTT_Ordered_Inplace2_2 |
@@ -600,7 +600,7 @@ namespace gpuntt
     GPU_NTT_Poly_Ordered_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                  Modulus<T>* modulus,
                                  ntt_rns_configuration<T> cfg, int batch_size,
-                                 int mod_count, int* order, T** intermediate_steps = nullptr);
+                                 int mod_count, int* order, T* intermediate_steps = nullptr);
 
     // Kernel Parameters
     template <typename T> auto CreateForwardNTTKernel()

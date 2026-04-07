@@ -4046,7 +4046,9 @@ namespace gpuntt
                            int shared_index, int logm,
                            int outer_iteration_count, int N_power,
                            bool zero_padding, bool not_last_kernel,
-                           bool reduction_poly_check, int mod_count, int* order)
+                           bool reduction_poly_check, int mod_count, int* order, 
+                           T* trace_buffer = nullptr, 
+                           size_t trace_stride = 0)
     {
         const int idx_x = threadIdx.x;
         const int idx_y = threadIdx.y;
@@ -4057,7 +4059,6 @@ namespace gpuntt
         const int mod_index = block_z % mod_count;
         const int input_index = order[block_z];
 
-        // extern __shared__ T shared_memory[];
         extern __shared__ char shared_memory_typed[];
         T* shared_memory = reinterpret_cast<T*>(shared_memory_typed);
 
@@ -4092,6 +4093,7 @@ namespace gpuntt
         int in_shared_address =
             ((shared_addresss >> t_) << t_) + shared_addresss;
         location_t current_root_index;
+        
         if (not_last_kernel)
         {
 #pragma unroll
@@ -4113,6 +4115,18 @@ namespace gpuntt
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
 
+                // <--- TRACE INJECTION START
+                __syncthreads(); // Wait for all butterflies to finish
+                
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride; // Advance to next stage
+                }
+                
+                __syncthreads(); // Wait for trace dump to finish before modifying shared_memory again
+                // <--- TRACE INJECTION END
+
                 t = t >> 1;
                 t_2 -= 1;
                 t_ -= 1;
@@ -4120,7 +4134,6 @@ namespace gpuntt
 
                 in_shared_address =
                     ((shared_addresss >> t_) << t_) + shared_addresss;
-                //__syncthreads();
             }
             __syncthreads();
         }
@@ -4146,6 +4159,18 @@ namespace gpuntt
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
 
+                // <--- TRACE INJECTION START
+                __syncthreads(); 
+                
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride;
+                }
+                
+                __syncthreads(); 
+                // <--- TRACE INJECTION END
+
                 t = t >> 1;
                 t_2 -= 1;
                 t_ -= 1;
@@ -4153,7 +4178,6 @@ namespace gpuntt
 
                 in_shared_address =
                     ((shared_addresss >> t_) << t_) + shared_addresss;
-                //__syncthreads();
             }
             __syncthreads();
 
@@ -4174,6 +4198,20 @@ namespace gpuntt
                                 shared_memory[in_shared_address + t],
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
+
+                // <--- TRACE INJECTION START 
+                // Note: The original 6-iteration unroll didn't have syncs here, 
+                // but they are absolutely required if we dump to trace.
+                __syncthreads(); 
+                
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride;
+                }
+                
+                __syncthreads(); 
+                // <--- TRACE INJECTION END
 
                 t = t >> 1;
                 t_2 -= 1;
@@ -4197,7 +4235,7 @@ namespace gpuntt
         Modulus<T>* modulus, int shared_index, int logm,
         int outer_iteration_count, int N_power, bool zero_padding,
         bool not_last_kernel, bool reduction_poly_check, int mod_count,
-        int* order)
+        int* order, T* trace_buffer = nullptr, size_t trace_stride = 0) // <--- ADDED TRACE ARGS
     {
         const int idx_x = threadIdx.x;
         const int idx_y = threadIdx.y;
@@ -4217,6 +4255,7 @@ namespace gpuntt
         int t_ = shared_index;
         location_t m = (location_t) 1 << logm;
 
+        // Note: block_x and block_y are swapped here compared to the standard kernel
         location_t global_addresss =
             idx_x +
             (location_t) (idx_y *
@@ -4224,12 +4263,14 @@ namespace gpuntt
             (location_t) (blockDim.x * block_y) +
             (location_t) (2 * block_x * offset) +
             (location_t) (input_index << N_power);
+            
         location_t omega_addresss =
             idx_x +
             (location_t) (idx_y *
                           (offset / (1 << (outer_iteration_count - 1)))) +
             (location_t) (blockDim.x * block_y) +
             (location_t) (block_x * offset);
+            
         location_t shared_addresss = (idx_x + (idx_y * blockDim.x));
 
         // Load UInt64 from global & store to shared
@@ -4241,6 +4282,7 @@ namespace gpuntt
         int in_shared_address =
             ((shared_addresss >> t_) << t_) + shared_addresss;
         location_t current_root_index;
+        
         if (not_last_kernel)
         {
 #pragma unroll
@@ -4262,6 +4304,16 @@ namespace gpuntt
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
 
+                // <--- TRACE INJECTION START
+                __syncthreads(); 
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride;
+                }
+                __syncthreads(); 
+                // <--- TRACE INJECTION END
+
                 t = t >> 1;
                 t_2 -= 1;
                 t_ -= 1;
@@ -4269,7 +4321,6 @@ namespace gpuntt
 
                 in_shared_address =
                     ((shared_addresss >> t_) << t_) + shared_addresss;
-                //__syncthreads();
             }
             __syncthreads();
         }
@@ -4294,6 +4345,16 @@ namespace gpuntt
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
 
+                // <--- TRACE INJECTION START
+                __syncthreads(); 
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride;
+                }
+                __syncthreads(); 
+                // <--- TRACE INJECTION END
+
                 t = t >> 1;
                 t_2 -= 1;
                 t_ -= 1;
@@ -4301,7 +4362,6 @@ namespace gpuntt
 
                 in_shared_address =
                     ((shared_addresss >> t_) << t_) + shared_addresss;
-                //__syncthreads();
             }
             __syncthreads();
 
@@ -4322,6 +4382,16 @@ namespace gpuntt
                                 shared_memory[in_shared_address + t],
                                 root_of_unity_table[current_root_index],
                                 modulus[mod_index]);
+
+                // <--- TRACE INJECTION START
+                __syncthreads(); 
+                if (trace_buffer) {
+                    trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                    trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                    trace_buffer += trace_stride;
+                }
+                __syncthreads(); 
+                // <--- TRACE INJECTION END
 
                 t = t >> 1;
                 t_2 -= 1;
@@ -4346,7 +4416,8 @@ namespace gpuntt
                            Modulus<T>* modulus, int shared_index, int logm,
                            int k, int outer_iteration_count, int N_power,
                            Ninverse<T>* n_inverse, bool last_kernel,
-                           bool reduction_poly_check, int mod_count, int* order)
+                           bool reduction_poly_check, int mod_count, int* order,
+                           T* trace_buffer = nullptr, size_t trace_stride = 0) // <--- ADDED TRACE ARGS
     {
         const int idx_x = threadIdx.x;
         const int idx_y = threadIdx.y;
@@ -4363,7 +4434,6 @@ namespace gpuntt
 
         int t_2 = N_power - logm - 1;
         location_t offset = 1 << (N_power - k - 1);
-        // int t_ = 9 - outer_iteration_count;
         int t_ = (shared_index + 1) - outer_iteration_count;
         int loops = outer_iteration_count;
         location_t m = (location_t) 1 << logm;
@@ -4411,6 +4481,16 @@ namespace gpuntt
                                shared_memory[in_shared_address + t],
                                inverse_root_of_unity_table[current_root_index],
                                modulus[mod_index]);
+
+            // <--- TRACE INJECTION START
+            __syncthreads(); 
+            if (trace_buffer) {
+                trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                trace_buffer += trace_stride;
+            }
+            __syncthreads(); 
+            // <--- TRACE INJECTION END
 
             t = t << 1;
             t_2 += 1;
@@ -4438,14 +4518,14 @@ namespace gpuntt
                 shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
         }
     }
-
     template <typename T>
     __global__ void InverseCorePolyOrdered_(
         T* polynomial_in, T* polynomial_out,
         Root<T>* inverse_root_of_unity_table, Modulus<T>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<T>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order)
+        bool reduction_poly_check, int mod_count, int* order,
+        T* trace_buffer = nullptr, size_t trace_stride = 0) // <--- ADDED TRACE ARGS
     {
         const int idx_x = threadIdx.x;
         const int idx_y = threadIdx.y;
@@ -4462,11 +4542,11 @@ namespace gpuntt
 
         int t_2 = N_power - logm - 1;
         location_t offset = 1 << (N_power - k - 1);
-        // int t_ = 9 - outer_iteration_count;
         int t_ = (shared_index + 1) - outer_iteration_count;
         int loops = outer_iteration_count;
         location_t m = (location_t) 1 << logm;
 
+        // Swapped block_x/block_y mapping
         location_t global_addresss =
             idx_x +
             (location_t) (idx_y *
@@ -4510,6 +4590,16 @@ namespace gpuntt
                                shared_memory[in_shared_address + t],
                                inverse_root_of_unity_table[current_root_index],
                                modulus[mod_index]);
+
+            // <--- TRACE INJECTION START
+            __syncthreads(); 
+            if (trace_buffer) {
+                trace_buffer[global_addresss] = shared_memory[shared_addresss];
+                trace_buffer[global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
+                trace_buffer += trace_stride;
+            }
+            __syncthreads(); 
+            // <--- TRACE INJECTION END
 
             t = t << 1;
             t_2 += 1;
@@ -4543,7 +4633,7 @@ namespace gpuntt
     GPU_NTT_Poly_Ordered(T* device_in, T* device_out,
                          Root<T>* root_of_unity_table, Modulus<T>* modulus,
                          ntt_rns_configuration<T> cfg, int batch_size,
-                         int mod_count, int* order, T** intermediate_steps = nullptr)
+                         int mod_count, int* order, T* intermediate_steps = nullptr)
     {
         if ((cfg.n_power <= 9 || cfg.n_power >= 29))
         {
@@ -4555,17 +4645,25 @@ namespace gpuntt
                                      : CreateInverseNTTKernel<T>();
         bool standart_kernel = (cfg.n_power < 25) ? true : false;
         T* device_in_ = device_in;
-        size_t bytes_per_stage = batch_size * (1 << cfg.n_power) * sizeof(T);
+        
+        // <--- TRACE SETUP: Calculate stride and track global stage offset
+        size_t trace_stride_elements = batch_size * mod_count * (1 << cfg.n_power);
+        int stages_processed = 0;
+
         switch (cfg.ntt_type)
         {
             case FORWARD:
                 if (standart_kernel)
                 {
-                    for (int i = 0; i < kernel_parameters[cfg.n_power].size();
-                         i++)
+                    for (int i = 0; i < kernel_parameters[cfg.n_power].size(); i++)
                     {
-                        auto& current_kernel_params =
-                            kernel_parameters[cfg.n_power][i];
+                        auto& current_kernel_params = kernel_parameters[cfg.n_power][i];
+
+                        // Calculate the starting pointer for THIS kernel's trace output
+                        T* current_trace_ptr = (intermediate_steps != nullptr) 
+                            ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                            : nullptr;
+
                         ForwardCorePolyOrdered<<<
                             dim3(current_kernel_params.griddim_x,
                                  current_kernel_params.griddim_y, batch_size),
@@ -4578,25 +4676,31 @@ namespace gpuntt
                             current_kernel_params.outer_iteration_count,
                             cfg.n_power, cfg.zero_padding,
                             current_kernel_params.not_last_kernel,
-                            (cfg.reduction_poly ==
-                             ReductionPolynomial::X_N_minus),
-                            mod_count, order);
+                            (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
+                            mod_count, order, 
+                            current_trace_ptr, trace_stride_elements); // <--- ADDED TRACE ARGS
+                            
                         GPUNTT_CUDA_CHECK(cudaGetLastError());
-                        if (intermediate_steps != nullptr) {
-                            cudaMemcpyAsync(intermediate_steps[i], device_out, bytes_per_stage, 
-                                            cudaMemcpyDeviceToDevice, cfg.stream);
-                        }
-                        device_in_ = device_out;
 
+                        // Advance the global stage tracker
+                        int stages_in_kernel = current_kernel_params.not_last_kernel
+                            ? current_kernel_params.outer_iteration_count
+                            : (current_kernel_params.shared_index + 1);
+                        stages_processed += stages_in_kernel;
+
+                        device_in_ = device_out;
                     }
                 }
                 else
                 {
-                    for (int i = 0;
-                         i < kernel_parameters[cfg.n_power].size() - 1; i++)
+                    for (int i = 0; i < kernel_parameters[cfg.n_power].size() - 1; i++)
                     {
-                        auto& current_kernel_params =
-                            kernel_parameters[cfg.n_power][i];
+                        auto& current_kernel_params = kernel_parameters[cfg.n_power][i];
+
+                        T* current_trace_ptr = (intermediate_steps != nullptr) 
+                            ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                            : nullptr;
+
                         ForwardCorePolyOrdered<<<
                             dim3(current_kernel_params.griddim_x,
                                  current_kernel_params.griddim_y, batch_size),
@@ -4609,15 +4713,26 @@ namespace gpuntt
                             current_kernel_params.outer_iteration_count,
                             cfg.n_power, cfg.zero_padding,
                             current_kernel_params.not_last_kernel,
-                            (cfg.reduction_poly ==
-                             ReductionPolynomial::X_N_minus),
-                            mod_count, order);
+                            (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
+                            mod_count, order, 
+                            current_trace_ptr, trace_stride_elements);
+                            
                         GPUNTT_CUDA_CHECK(cudaGetLastError());
+
+                        int stages_in_kernel = current_kernel_params.not_last_kernel
+                            ? current_kernel_params.outer_iteration_count
+                            : (current_kernel_params.shared_index + 1);
+                        stages_processed += stages_in_kernel;
+
                         device_in_ = device_out;
                     }
-                    auto& current_kernel_params = kernel_parameters
-                        [cfg.n_power]
-                        [kernel_parameters[cfg.n_power].size() - 1];
+                    
+                    auto& current_kernel_params = kernel_parameters[cfg.n_power][kernel_parameters[cfg.n_power].size() - 1];
+
+                    T* current_trace_ptr = (intermediate_steps != nullptr) 
+                        ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                        : nullptr;
+
                     ForwardCorePolyOrdered_<<<
                         dim3(current_kernel_params.griddim_x,
                              current_kernel_params.griddim_y, batch_size),
@@ -4631,18 +4746,23 @@ namespace gpuntt
                         cfg.n_power, cfg.zero_padding,
                         current_kernel_params.not_last_kernel,
                         (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
-                        mod_count, order);
+                        mod_count, order, 
+                        current_trace_ptr, trace_stride_elements);
+                        
                     GPUNTT_CUDA_CHECK(cudaGetLastError());
                 }
                 break;
             case INVERSE:
                 if (standart_kernel)
                 {
-                    for (int i = 0; i < kernel_parameters[cfg.n_power].size();
-                         i++)
+                    for (int i = 0; i < kernel_parameters[cfg.n_power].size(); i++)
                     {
-                        auto& current_kernel_params =
-                            kernel_parameters[cfg.n_power][i];
+                        auto& current_kernel_params = kernel_parameters[cfg.n_power][i];
+
+                        T* current_trace_ptr = (intermediate_steps != nullptr) 
+                            ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                            : nullptr;
+
                         InverseCorePolyOrdered<<<
                             dim3(current_kernel_params.griddim_x,
                                  current_kernel_params.griddim_y, batch_size),
@@ -4655,21 +4775,30 @@ namespace gpuntt
                             current_kernel_params.outer_iteration_count,
                             cfg.n_power, cfg.mod_inverse,
                             current_kernel_params.not_last_kernel,
-                            (cfg.reduction_poly ==
-                             ReductionPolynomial::X_N_minus),
-                            mod_count, order);
+                            (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
+                            mod_count, order, 
+                            current_trace_ptr, trace_stride_elements); // <--- ADDED TRACE ARGS
+                            
                         GPUNTT_CUDA_CHECK(cudaGetLastError());
-                        if (intermediate_steps != nullptr) {
-                            cudaMemcpyAsync(intermediate_steps[i], device_out, bytes_per_stage, 
-                                            cudaMemcpyDeviceToDevice, cfg.stream);
-                        }
+
+                        // Note: cudaMemcpyAsync removed entirely!
+
+                        int stages_in_kernel = current_kernel_params.not_last_kernel
+                            ? current_kernel_params.outer_iteration_count
+                            : (current_kernel_params.shared_index + 1);
+                        stages_processed += stages_in_kernel;
+
                         device_in_ = device_out;
                     }
                 }
                 else
                 {
-                    auto& current_kernel_params =
-                        kernel_parameters[cfg.n_power][0];
+                    auto& current_kernel_params = kernel_parameters[cfg.n_power][0];
+
+                    T* current_trace_ptr = (intermediate_steps != nullptr) 
+                        ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                        : nullptr;
+
                     InverseCorePolyOrdered_<<<
                         dim3(current_kernel_params.griddim_x,
                              current_kernel_params.griddim_y, batch_size),
@@ -4683,14 +4812,26 @@ namespace gpuntt
                         cfg.n_power, cfg.mod_inverse,
                         current_kernel_params.not_last_kernel,
                         (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
-                        mod_count, order);
+                        mod_count, order, 
+                        current_trace_ptr, trace_stride_elements);
+                        
                     GPUNTT_CUDA_CHECK(cudaGetLastError());
+                    
+                    int stages_in_kernel = current_kernel_params.not_last_kernel
+                        ? current_kernel_params.outer_iteration_count
+                        : (current_kernel_params.shared_index + 1);
+                    stages_processed += stages_in_kernel;
+                        
                     device_in_ = device_out;
-                    for (int i = 1; i < kernel_parameters[cfg.n_power].size();
-                         i++)
+                    
+                    for (int i = 1; i < kernel_parameters[cfg.n_power].size(); i++)
                     {
-                        auto& current_kernel_params =
-                            kernel_parameters[cfg.n_power][i];
+                        auto& current_kernel_params = kernel_parameters[cfg.n_power][i];
+
+                        current_trace_ptr = (intermediate_steps != nullptr) 
+                            ? (intermediate_steps + (stages_processed * trace_stride_elements)) 
+                            : nullptr;
+
                         InverseCorePolyOrdered<<<
                             dim3(current_kernel_params.griddim_x,
                                  current_kernel_params.griddim_y, batch_size),
@@ -4703,13 +4844,18 @@ namespace gpuntt
                             current_kernel_params.outer_iteration_count,
                             cfg.n_power, cfg.mod_inverse,
                             current_kernel_params.not_last_kernel,
-                            (cfg.reduction_poly ==
-                             ReductionPolynomial::X_N_minus),
-                            mod_count, order);
+                            (cfg.reduction_poly == ReductionPolynomial::X_N_minus),
+                            mod_count, order, 
+                            current_trace_ptr, trace_stride_elements);
+                            
                         GPUNTT_CUDA_CHECK(cudaGetLastError());
+                        
+                        stages_in_kernel = current_kernel_params.not_last_kernel
+                            ? current_kernel_params.outer_iteration_count
+                            : (current_kernel_params.shared_index + 1);
+                        stages_processed += stages_in_kernel;
                     }
                 }
-
                 break;
             default:
                 throw std::invalid_argument("Invalid ntt_type!");
@@ -4720,7 +4866,7 @@ namespace gpuntt
     template <typename T>
     __host__ void GPU_NTT_Poly_Ordered_Inplace(
         T* device_inout, Root<T>* root_of_unity_table, Modulus<T>* modulus,
-        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order, T** intermediate_steps)
+        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order, T* intermediate_steps)
     {
         GPU_NTT_Poly_Ordered(device_inout, device_inout, root_of_unity_table,
                              modulus, cfg, batch_size, mod_count, order, intermediate_steps);
@@ -5435,56 +5581,56 @@ namespace gpuntt
         Root<Data32>* root_of_unity_table, Modulus<Data32>* modulus,
         int shared_index, int logm, int outer_iteration_count, int N_power,
         bool zero_padding, bool not_last_kernel, bool reduction_poly_check,
-        int mod_count, int* order);
+        int mod_count, int* order, Data32* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __global__ void ForwardCorePolyOrdered_<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
         Root<Data32>* root_of_unity_table, Modulus<Data32>* modulus,
         int shared_index, int logm, int outer_iteration_count, int N_power,
         bool zero_padding, bool not_last_kernel, bool reduction_poly_check,
-        int mod_count, int* order);
+        int mod_count, int* order, Data32* intermediate_trace, size_t intermediate_trace_size);
 
     template __global__ void ForwardCorePolyOrdered<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         Root<Data64>* root_of_unity_table, Modulus<Data64>* modulus,
         int shared_index, int logm, int outer_iteration_count, int N_power,
         bool zero_padding, bool not_last_kernel, bool reduction_poly_check,
-        int mod_count, int* order);
+        int mod_count, int* order, Data64* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __global__ void ForwardCorePolyOrdered_<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         Root<Data64>* root_of_unity_table, Modulus<Data64>* modulus,
         int shared_index, int logm, int outer_iteration_count, int N_power,
         bool zero_padding, bool not_last_kernel, bool reduction_poly_check,
-        int mod_count, int* order);
+        int mod_count, int* order, Data64* intermediate_trace, size_t intermediate_trace_size);
 
     template __global__ void InverseCorePolyOrdered<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
         Root<Data32>* inverse_root_of_unity_table, Modulus<Data32>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<Data32>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, Data32* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __global__ void InverseCorePolyOrdered_<Data32>(
         Data32* polynomial_in, Data32* polynomial_out,
         Root<Data32>* inverse_root_of_unity_table, Modulus<Data32>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<Data32>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, Data32* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __global__ void InverseCorePolyOrdered<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         Root<Data64>* inverse_root_of_unity_table, Modulus<Data64>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<Data64>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, Data64* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __global__ void InverseCorePolyOrdered_<Data64>(
         Data64* polynomial_in, Data64* polynomial_out,
         Root<Data64>* inverse_root_of_unity_table, Modulus<Data64>* modulus,
         int shared_index, int logm, int k, int outer_iteration_count,
         int N_power, Ninverse<Data64>* n_inverse, bool last_kernel,
-        bool reduction_poly_check, int mod_count, int* order);
+        bool reduction_poly_check, int mod_count, int* order, Data64* intermediate_trace = nullptr, size_t intermediate_trace_size = 0);
 
     template __host__ void
     GPU_NTT_Poly_Ordered<Data32>(Data32* device_in, Data32* device_out,
@@ -5496,7 +5642,7 @@ namespace gpuntt
     template __host__ void GPU_NTT_Poly_Ordered_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
         Modulus<Data32>* modulus, ntt_rns_configuration<Data32> cfg,
-        int batch_size, int mod_count, int* order, Data32** intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order, Data32* intermediate_steps = nullptr);
 
     template __host__ void
     GPU_NTT_Poly_Ordered<Data64>(Data64* device_in, Data64* device_out,
@@ -5508,6 +5654,6 @@ namespace gpuntt
     template __host__ void GPU_NTT_Poly_Ordered_Inplace<Data64>(
         Data64* device_inout, Root<Data64>* root_of_unity_table,
         Modulus<Data64>* modulus, ntt_rns_configuration<Data64> cfg,
-        int batch_size, int mod_count, int* order, Data64** intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order, Data64* intermediate_steps = nullptr);
 
 } // namespace gpuntt
