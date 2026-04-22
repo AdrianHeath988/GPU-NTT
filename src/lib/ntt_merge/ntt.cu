@@ -3393,6 +3393,16 @@ namespace gpuntt
 #pragma unroll
             for (int lp = 0; lp < 6; lp++)
             {
+                // Trace-integrity barrier: without this, faster warps can
+                // race ahead into this iteration's butterfly and overwrite
+                // shared-memory positions that slower warps are still
+                // reading for the PREVIOUS iteration's trace write. This
+                // only matters when trace_buffer != nullptr; the original
+                // kernel was correct for the non-trace case because the
+                // `__syncthreads()` after each butterfly already ordered
+                // writes between iterations.
+                if (trace_buffer != nullptr) __syncthreads();
+
                 if (reduction_poly_check)
                 { // X_N_minus
                     current_root_index = (omega_addresss >> t_2) +
@@ -3413,16 +3423,6 @@ namespace gpuntt
                     int current_overall_stage = logm + (shared_index - 5) + lp;
                     size_t elements_per_stage = gridDim.z * (1 << N_power);
                     size_t stage_offset = current_overall_stage * elements_per_stage;
-
-                    // ==========================================
-                    // DEBUG: Print only from the very first thread
-                    // ==========================================
-                    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && 
-                        threadIdx.x == 0 && threadIdx.y == 0) {
-                        
-                        printf("[KERNEL-TRACE-DEBUG] lp: %d | logm: %d | shared_idx: %d | calc_stage: %d\n", 
-                               lp, logm, shared_index, current_overall_stage);
-                    }
 
                     trace_buffer[stage_offset + global_addresss] = shared_memory[shared_addresss];
                     trace_buffer[stage_offset + global_addresss + offset] = shared_memory[shared_addresss + (blockDim.x * blockDim.y)];
@@ -4633,7 +4633,8 @@ namespace gpuntt
     GPU_NTT_Poly_Ordered(T* device_in, T* device_out,
                          Root<T>* root_of_unity_table, Modulus<T>* modulus,
                          ntt_rns_configuration<T> cfg, int batch_size,
-                         int mod_count, int* order, T* intermediate_steps = nullptr)
+                         int mod_count, int* order, T* intermediate_steps = nullptr,
+                         size_t trace_stride_polys = 0)
     {
         if ((cfg.n_power <= 9 || cfg.n_power >= 29))
         {
@@ -4645,9 +4646,20 @@ namespace gpuntt
                                      : CreateInverseNTTKernel<T>();
         bool standart_kernel = (cfg.n_power < 25) ? true : false;
         T* device_in_ = device_in;
-        
+
         // <--- TRACE SETUP: Calculate stride and track global stage offset
-        size_t trace_stride_elements = batch_size * mod_count * (1 << cfg.n_power);
+        // The kernel writes to positions [order[block_z] * N, order[block_z] * N + N)
+        // for each block_z in [0, batch_size). When max(order) > batch_size * mod_count,
+        // the per-stage WRITES SPAN MORE than the natural stride of
+        // batch_size * mod_count * N, causing later stages to clobber earlier
+        // stages' writes (specifically stages of polys with high `order` values).
+        // Callers that read the trace MUST pass `trace_stride_polys` large enough
+        // to accommodate the max order value (e.g. total polys in the input
+        // buffer) so adjacent stages don't overlap.
+        size_t trace_stride_polys_eff = (trace_stride_polys > 0)
+            ? trace_stride_polys
+            : (size_t)(batch_size * mod_count);
+        size_t trace_stride_elements = trace_stride_polys_eff * (1 << cfg.n_power);
         int stages_processed = 0;
 
         switch (cfg.ntt_type)
@@ -4866,10 +4878,12 @@ namespace gpuntt
     template <typename T>
     __host__ void GPU_NTT_Poly_Ordered_Inplace(
         T* device_inout, Root<T>* root_of_unity_table, Modulus<T>* modulus,
-        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order, T* intermediate_steps)
+        ntt_rns_configuration<T> cfg, int batch_size, int mod_count, int* order,
+        T* intermediate_steps, size_t trace_stride_polys)
     {
         GPU_NTT_Poly_Ordered(device_inout, device_inout, root_of_unity_table,
-                             modulus, cfg, batch_size, mod_count, order, intermediate_steps);
+                             modulus, cfg, batch_size, mod_count, order,
+                             intermediate_steps, trace_stride_polys);
     }
 
     ////////////////////////////////////
@@ -5637,23 +5651,29 @@ namespace gpuntt
                                  Root<Data32>* root_of_unity_table,
                                  Modulus<Data32>* modulus,
                                  ntt_rns_configuration<Data32> cfg,
-                                 int batch_size, int mod_count, int* order);
+                                 int batch_size, int mod_count, int* order,
+                                 Data32* intermediate_steps,
+                                 size_t trace_stride_polys);
 
     template __host__ void GPU_NTT_Poly_Ordered_Inplace<Data32>(
         Data32* device_inout, Root<Data32>* root_of_unity_table,
         Modulus<Data32>* modulus, ntt_rns_configuration<Data32> cfg,
-        int batch_size, int mod_count, int* order, Data32* intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order,
+        Data32* intermediate_steps, size_t trace_stride_polys);
 
     template __host__ void
     GPU_NTT_Poly_Ordered<Data64>(Data64* device_in, Data64* device_out,
                                  Root<Data64>* root_of_unity_table,
                                  Modulus<Data64>* modulus,
                                  ntt_rns_configuration<Data64> cfg,
-                                 int batch_size, int mod_count, int* order);
+                                 int batch_size, int mod_count, int* order,
+                                 Data64* intermediate_steps,
+                                 size_t trace_stride_polys);
 
     template __host__ void GPU_NTT_Poly_Ordered_Inplace<Data64>(
         Data64* device_inout, Root<Data64>* root_of_unity_table,
         Modulus<Data64>* modulus, ntt_rns_configuration<Data64> cfg,
-        int batch_size, int mod_count, int* order, Data64* intermediate_steps = nullptr);
+        int batch_size, int mod_count, int* order,
+        Data64* intermediate_steps, size_t trace_stride_polys);
 
 } // namespace gpuntt

@@ -594,13 +594,17 @@ namespace gpuntt
     GPU_NTT_Poly_Ordered(T* device_in, T* device_out,
                          Root<T>* root_of_unity_table, Modulus<T>* modulus,
                          ntt_rns_configuration<T> cfg, int batch_size,
-                         int mod_count, int* order);
+                         int mod_count, int* order,
+                         T* intermediate_steps = nullptr,
+                         size_t trace_stride_polys = 0);
     template <typename T>
     __host__ void
     GPU_NTT_Poly_Ordered_Inplace(T* device_inout, Root<T>* root_of_unity_table,
                                  Modulus<T>* modulus,
                                  ntt_rns_configuration<T> cfg, int batch_size,
-                                 int mod_count, int* order, T* intermediate_steps = nullptr);
+                                 int mod_count, int* order,
+                                 T* intermediate_steps = nullptr,
+                                 size_t trace_stride_polys = 0);
 
     // Kernel Parameters
     template <typename T> auto CreateForwardNTTKernel()
